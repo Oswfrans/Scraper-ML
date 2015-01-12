@@ -1,0 +1,226 @@
+from __future__ import print_function
+from __future__ import division
+import csv
+import string
+import pandas as pd
+from pandas import DataFrame
+import math
+
+import numpy as np
+from numpy  import *
+
+import logging
+from optparse import OptionParser
+import sys
+from time import time
+import pylab as pl
+
+from sklearn.datasets import fetch_20newsgroups
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import HashingVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.linear_model import RidgeClassifier
+from sklearn.svm import LinearSVC
+from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import Perceptron
+from sklearn.linear_model import PassiveAggressiveClassifier
+from sklearn.naive_bayes import BernoulliNB, MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import NearestCentroid
+from sklearn.utils.extmath import density
+from sklearn import metrics
+
+POS_WORDLIST_FILENAME ="POS.txt"
+NEG_WORDLIST_FILENAME="NEG.txt"
+
+inFile = open(POS_WORDLIST_FILENAME, 'r')
+pos_wordlist=[i.strip() for i in inFile]
+print("  ", len(pos_wordlist), "words loaded.")
+
+inFile = open(NEG_WORDLIST_FILENAME, 'r')
+neg_wordlist=[i.strip() for i in inFile]
+print("  ", len(neg_wordlist), "words loaded.")
+
+#need to do everything twice once for pos and once for neg
+
+#df=pd.read_csv(csv_file, sep=';')
+#saved_column = df.text
+excel_file="output_try2_randomized_cut.xlsx"
+
+saved_column=pd.read_excel(excel_file, 'Sheet1', parse_cols='C')
+saved_column=saved_column.values.tolist()
+
+
+def build_lexicon(corpus):
+    lexicon = set()
+    for doc in corpus:
+        lexicon.update([word for word in doc.split()]) #not the best tokenizing
+    return lexicon
+
+neg_vocabulary = build_lexicon(neg_wordlist)
+pos_vocabulary= build_lexicon(pos_wordlist)
+
+saved_column_i=[]
+
+for y in saved_column:
+    for i in y:
+       #Tokenization kan ook met NLTK of Sci-kit learn
+      i=i.upper()
+      i= i.replace('!', '').replace('.','').replace('?','').replace(',','')
+      saved_column_i.append(i)
+
+#print(saved_column_i) 
+
+word_counter=[]
+
+for y in saved_column:
+    for i in y:
+       #Tokenization kan ook met NLTK of Sci-kit learn
+       i=i.upper()
+       i= i.replace('!', '').replace('.','').replace('?','').replace(',','')
+       i=i.split(' ')
+       #dit werkt en word count ook
+       word_count=len(i)
+       word_counter.append(word_count)
+
+#print(word_counter) 
+
+avg_wordcount=sum(word_counter)/len(word_counter)
+#how to change a single number into a vector/matrix called loga_matrix
+avg_wordcount_div=1/(math.log(1+avg_wordcount))
+
+
+def tflog(term, document):
+  bleeg=freq(term, document)
+  if bleeg==0:
+    bleeg=0  
+  else:
+    bleeg=float(((1+math.log(bleeg))/avg_wordcount_div))
+  return bleeg
+
+
+def tf(term, document):
+  bleeg=freq(term, document)
+  if bleeg==0:
+    bleeg=0
+  else:
+    bleeg=float(1+math.log(bleeg))
+  return bleeg
+
+
+def freq(term, document):
+  return document.split().count(term)
+
+neg_doc_term_matrix = []
+pos_doc_term_matrix = []
+
+print("OKAY")
+
+#Assuming we have a list of document body texts as strings named mydoclist
+for doc in saved_column_i:
+    tf_vector = [tflog(word, doc) for word in neg_vocabulary]
+    neg_doc_term_matrix.append(tf_vector)
+
+for doc in saved_column_i:
+    tf_vector = [tflog(word, doc) for word in pos_vocabulary]
+    pos_doc_term_matrix.append(tf_vector)
+
+#print(pos_doc_term_matrix)
+
+#IDF part starts here
+def numDocsContaining(word, doclist):
+    doccount = 0
+    for doc in doclist:
+        if freq(word, doc) > 0:
+            doccount +=1
+    return doccount
+
+def idf(word, doclist):
+    return math.log(len(doclist) / math.fabs(numDocsContaining(word, doclist) + 1) )
+
+print("joy")
+
+pos_my_idf_vector = [idf(word, saved_column_i) for word in pos_vocabulary]
+neg_my_idf_vector = [idf(word, saved_column_i) for word in neg_vocabulary]
+
+print("check")
+
+#changing a vector into a matrix
+def build_idf_matrix(idf_vector):
+    idf_mat = np.zeros((len(idf_vector), len(idf_vector)))
+    np.fill_diagonal(idf_mat, idf_vector)
+    return idf_mat
+
+pos_my_idf_matrix = build_idf_matrix(pos_my_idf_vector)
+neg_my_idf_matrix = build_idf_matrix(neg_my_idf_vector)
+
+print("comeon")
+
+#print(neg_my_idf_matrix)
+
+pos_doc_term_matrix_tfidf = []
+neg_doc_term_matrix_tfidf = []
+
+for tf_vector in pos_doc_term_matrix:
+    pos_doc_term_matrix_tfidf.append(np.dot(tf_vector, pos_my_idf_matrix))
+
+for tf_vector in neg_doc_term_matrix:
+    neg_doc_term_matrix_tfidf.append(np.dot(tf_vector, neg_my_idf_matrix))
+
+print("Still there?")
+
+#Everything seems to work now on to predicting
+
+pos_scores=[]
+neg_scores=[]
+path="TFID.csv"
+
+for i in pos_doc_term_matrix_tfidf:
+    blarbu=sum(i)
+    pos_scores.append(blarbu)
+
+for i in neg_doc_term_matrix_tfidf:
+  bleerbu=sum(i)
+  neg_scores.append(bleerbu)
+
+neg_scores_array=array(neg_scores)
+pos_scores_array=array(pos_scores)
+
+Differate=pos_scores_array-neg_scores_array
+
+#print(Differate)
+#C = [a - b for a, b in zip(A, B)]
+
+Class=[]
+for i in Differate:
+  if i>0:
+    z=1
+  else:
+    z=0
+  Class.append(z)
+
+#print(Class)
+print("almost")
+
+output=[pos_scores,neg_scores]
+
+output=zip(*output)
+
+out2=[Class, saved_column]
+out2=zip(*out2)
+path2='bleegblar.csv'
+
+def csv_writer(data,path):
+    with open(path, "wb") as csv_file:
+        writer = csv.writer(csv_file,delimiter=';')
+        for line in data:
+          writer.writerow(line)
+
+
+df=DataFrame({'pos_scores':pos_scores, 'neg_scores':neg_scores, 'dif':Differate, 'Class1ispos':Class})
+#df=DataFrame({'dif':Differate, 'Class1ispos':Class})
+df.to_excel('TFID_Y.xlsx',sheet_name='sheet1', index=False)
+
+cf=DataFrame({'Class1ispos':Class, 'Text':saved_column_i})
+cf.to_excel('forNBC.xlsx',sheet_name='sheet1', index=False)
+
