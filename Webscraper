@@ -1,0 +1,92 @@
+import csv
+from selenium import webdriver
+import re
+from datetime import datetime
+import pandas as pd
+from pandas import DataFrame
+
+from pattern.web import URL, DOM, plaintext
+from pattern.web import NODE, TEXT, COMMENT, ELEMENT, DOCUMENT
+#url = "http://seekingalpha.com/search/transcripts?term=%22earnings+call+transcript%22&page=4988"
+url = "http://seekingalpha.com/search/transcripts?term=%22earnings+call+transcript%22&page=4944"
+#url = "http://seekingalpha.com/search/transcripts?term=earnings+call+transcript&page=1"
+#path = "smartoutput.csv"
+path = "smartzout.xlsx"
+driver = webdriver.Firefox()
+
+def crawlenpage(url):
+    driver.get(url)
+    urls = []
+    n=0
+    #smartlist=[]
+    for i in range(0,200):
+        links = driver.find_elements_by_xpath("//div[@class='transcript_link']/a")
+        href=links[3].get_attribute("href")
+        urls.append(href)
+
+        clickLink()
+        print 'we did '+str(n+1)
+        n+=1
+    return urls
+
+def clickLink():
+    #print ("Start clicking on link")
+    nextPage = driver.find_element_by_link_text("Next Page")
+    nextPage.click()
+    #print ("Clicked on link")
+
+def scrapePage(urls):
+    data = []
+    for i in urls:
+        url = URL(i)
+        html = url.download()
+        dom = DOM(html)
+
+        article = dom.by_id("article_content")    
+        deel1 = article.by_tag("p")[0]
+        deel2 = deel1.content
+
+        if "(<a" in deel2:
+            index_c = deel2.index("(<a")
+            companyname = deel2[:index_c]
+            index_start = deel2.index("\">") + 2
+            index_stop = deel2.index("</a>")
+            ticker = deel2[index_start:index_stop]
+            text = article.content
+            text = remove_html_tags(text)
+            text = text.replace('\n', '')
+            text = text.encode('ascii', 'ignore')
+            
+            date = dom.by_class("article_info_pos")
+            date = date[0]
+            date = date.by_tag("span")[0]
+            date = date.content
+            index_end = date.index("ET") - 1
+            date = date[:index_end]
+            date = datetime.strptime(date, '%b. %d, %Y %I:%M %p')
+
+            output = [ticker, date, text]
+            data.append(output)
+        else:
+            print i     #hier wordt de url die het niet doet geprint
+    return data
+      
+def remove_html_tags(data):
+    p = re.compile(r'<.*?>')
+    return p.sub(' ', data)
+
+def csv_writer(data,path):
+    with open(path, "wb") as csv_file:
+        writer = csv.writer(csv_file,delimiter=';')
+        for line in data:
+            writer.writerow(line)
+
+crawl = crawlenpage(url)
+scrape = scrapePage(crawl)
+
+def excelwrite(data,path):
+    df=DataFrame(data)
+    #df.to_csv(path)
+    df.to_excel(path,sheet_name='sheet1', index=False)
+excelwrite(scrape,path)
+print "done"
