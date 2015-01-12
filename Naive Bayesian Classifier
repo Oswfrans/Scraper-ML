@@ -1,0 +1,110 @@
+import math
+import random
+from random import shuffle
+import csv
+#import xlrd
+import pandas as pd
+from pandas import DataFrame
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import HashingVectorizer
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.linear_model import RidgeClassifier
+from sklearn.svm import LinearSVC
+from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import Perceptron
+from sklearn.linear_model import PassiveAggressiveClassifier
+from sklearn.naive_bayes import BernoulliNB, MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import NearestCentroid
+from sklearn.utils.extmath import density
+from sklearn import metrics
+
+csv_file='output.csv'
+
+df=pd.read_csv(csv_file, sep=';')
+saved_date = df.date
+saved_id= df.ticker
+
+ex_file='forNBC.xlsx'
+
+df=pd.ExcelFile(ex_file)
+
+saved_stuff={sheet_name: df.parse(sheet_name) for sheet_name in df.sheet_names}
+
+saved_column=saved_stuff['sheet1']['Text']
+Class=saved_stuff['sheet1']['Class1ispos']
+
+pr_dict = dict(zip(saved_column, Class))
+
+trainset_size = int(round(len(saved_column)*0.33)) # i chose this threshold arbitrarily...
+print 'The training set size for this classifier is ' + str(trainset_size) + '\n'
+
+X_train=saved_column[0:trainset_size]
+y_train=Class[0:trainset_size]
+X_test=saved_column[trainset_size+1:len(saved_column)]
+y_test=Class[trainset_size+1:len(saved_column)]
+
+#print X_train
+
+from sklearn.naive_bayes import MultinomialNB
+univectorizer = TfidfVectorizer(min_df=1, ngram_range=(1, 1), stop_words='english', 
+    strip_accents='unicode', norm='l2')
+
+bivectorizer = TfidfVectorizer(min_df=1, ngram_range=(2, 2), stop_words='english', 
+    strip_accents='unicode', norm='l2')
+
+trivectorizer = TfidfVectorizer(min_df=1, ngram_range=(3, 3), stop_words='english', 
+    strip_accents='unicode', norm='l2')
+
+
+uni_X_train = univectorizer.fit_transform(X_train)
+uni_X_test = univectorizer.transform(X_test)
+
+bi_X_train = bivectorizer.fit_transform(X_train)
+bi_X_test = bivectorizer.transform(X_test)
+
+tri_X_train = trivectorizer.fit_transform(X_train)
+tri_X_test = trivectorizer.transform(X_test)
+
+#print X_train
+
+uni_classifier = MultinomialNB().fit(uni_X_train, y_train)
+bi_classifier = MultinomialNB().fit(bi_X_train, y_train)
+tri_classifier = MultinomialNB().fit(tri_X_train, y_train)
+
+from sklearn import metrics
+
+uni_y_predicted = uni_classifier.predict(uni_X_test)
+uni_y_predicted_proba=uni_classifier.predict_proba(uni_X_test)
+
+bi_y_predicted = bi_classifier.predict(bi_X_test)
+bi_y_predicted_proba=bi_classifier.predict_proba(bi_X_test)
+
+tri_y_predicted = tri_classifier.predict(tri_X_test)
+tri_y_predicted_proba=tri_classifier.predict_proba(tri_X_test)
+
+
+uni_df_ypp=pd.DataFrame(uni_y_predicted_proba, columns=list('ab'))
+#y_predicted_proba.columns=['a','b']
+
+uni_zla=uni_df_ypp['b']
+uni_zlo=uni_df_ypp['a']
+
+bi_df_ypp=pd.DataFrame(bi_y_predicted_proba, columns=list('ab'))
+#y_predicted_proba.columns=['a','b']
+
+bi_zla=bi_df_ypp['b']
+bi_zlo=bi_df_ypp['a']
+
+tri_df_ypp=pd.DataFrame(tri_y_predicted_proba, columns=list('ab'))
+#y_predicted_proba.columns=['a','b']
+
+tri_zla=tri_df_ypp['b']
+tri_zlo=tri_df_ypp['a']
+
+
+df=DataFrame({'uni_Probabilitiestobepos':uni_zla, 'bi_Probabilitiestobepos':bi_zla, 'tri_Probabilitiestobepos':tri_zla})
+df.to_excel('NBC.xlsx',sheet_name='sheet1', index=False)
+
